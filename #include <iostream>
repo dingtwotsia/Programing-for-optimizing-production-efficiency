@@ -1,0 +1,234 @@
+#include <iostream>
+#include <cstring>
+using namespace std;
+void ordersort(int, int**);
+void swapRows(int[], int[]);
+void machine_order(int, int, int, int[], int**, int**, int**);
+int machine_time(int, int, int[]);
+void output(int, int*, int**);
+int main()
+{
+    //m = 機器數量,n = 訂單數量,h = 維修限制
+    int m = 0, n = 0, h = 0;
+    cin >> m >> n >> h;
+    //輸入機器資料
+    int** data = new int* [m];
+    for (int i = 0; i < m; i++)
+        data[i] = new int[5];
+    for (int i = 0; i < m; i++)
+    {
+        for (int j = 0; j < 5; j++)
+        {
+            int this_one = 0;
+            cin >> this_one;
+            data[i][j] = this_one;
+        }
+    }
+    //輸入訂單資料
+    int** orderInfo = new int* [n];
+    for (int i = 0; i < n; i++)
+        orderInfo[i] = new int[3];
+    for (int i = 0; i < n; i++)
+    {
+        orderInfo[i][0] = i+1;
+        for (int j = 1; j < 3; j++)
+            cin >> orderInfo[i][j];
+    }
+    //修改訂單順序
+    ordersort(n, orderInfo);
+    //紀錄機器＿訂單
+    int** record = new int* [m];
+    for(int i = 0;i < m;i++)
+        record[i] = new int[n];
+    //紀錄機器負責幾筆訂單
+    int* ans_period = new int[m];
+    for(int i = 0;i < m;i++)
+        ans_period[i] = 0;
+    //安排訂單
+    machine_order(n, m, h, ans_period, orderInfo, data, record);
+    //輸出答案
+    output(m, ans_period, record);
+    return 0;
+}
+//修改訂單順序
+void ordersort(int n, int** order)
+{
+    //先按照繳交時間，由前往後排
+    for (int i = 0; i < n; i++)
+    {
+        for (int j = 0; j < n - 1; j++)
+        {
+            if (order[j][2] > order[j + 1][2])
+            {
+                swapRows(order[j], order[j + 1]);
+            }
+        }
+    }
+    //若相同繳交時間，先把大訂單完成
+    int d = 0;
+    int next = 0;
+    int leftToSort = n;
+    while (leftToSort > 0)
+    {
+        int dAmount = 0;
+        d = order[next][2];
+        for (int i = 0; i < n; i++)
+        {
+            if (order[i][2] == d)
+            {
+                dAmount++;
+            }
+        }
+        int round = 0;
+        for (int i = next; i < next + dAmount; i++)
+        {
+            for (int j = next; j < next + dAmount - 1; j++)
+            {
+                if (order[j][1] > order[j + 1][1])
+                    swapRows(order[j], order[j + 1]);
+            }
+            round++;
+        }
+        next += dAmount;
+        leftToSort -= dAmount;
+    }
+}
+//兩筆訂單互換
+void swapRows(int a[3], int b[3])
+{
+    int num = 0, q = 0, d = 0;
+    num = a[0]; q = a[1]; d = a[2];
+    a[0] = b[0]; a[1] = b[1]; a[2] = b[2];
+    b[0] = num; b[1] = q; b[2] = d;
+}
+
+//將訂單安排進機器
+void machine_order(int n, int m, int h, int ans_period[], int** orderinfo, int** data, int** record)
+{
+    //目前該機器的時間
+    int* begin_period = new int[m];
+    //修理次數列表
+    int* machine_fix = new int[1000];
+    for (int i = 0; i < 1000; i++)
+        machine_fix[i] = 0;
+    //設定到的時辰
+    for (int i = 0; i < m; i++)
+        begin_period[i] = 0;
+    //設定產能狀況
+    int* begin_power = new int[m];
+    for (int i = 0; i < m; i++)
+        begin_power[i] = data[i][3];//一開始都是原本的
+    //對所有訂單（已排列）
+    for (int i = 0; i < n; i++)
+    {
+        //選擇要哪一台機器
+        bool fix_or_not = false;//先假設不修理
+        int min_hour = 1000000;
+        int this_ans = -1;
+        //對所有機器
+        for (int j = 0; j < m; j++)
+        {
+            bool this_fix_or_not = false;//先假設不修理
+            int this_time_nofix = 0;
+            //如果不修理＝目前時間＋製造時間
+            this_time_nofix = begin_period[j] + machine_time(orderinfo[i][1], begin_power[j], data[j]);
+            int this_time_fix = 0;
+            //如果修理＝目前時間＋製造時間＋修理時間
+            this_time_fix = begin_period[j] + machine_time(orderinfo[i][1], 100 + data[j][1], data[j]) + data[j][2];
+            //判別修理時間中，有沒有哪個時段會超過限制（h）
+            for (int k = begin_period[j]; k < begin_period[j] + data[j][2]; k++)
+            {
+                if (machine_fix[k] >= h)
+                {
+                    this_time_fix = 100000;
+                    break;
+                }
+            }
+            //如果修理比較好＝不修理時間花比較長
+            if (this_time_nofix > this_time_fix )
+            {
+                this_time_nofix = this_time_fix;
+                this_fix_or_not = true;
+            }
+
+            if (this_time_nofix < min_hour)
+            {
+                min_hour = this_time_nofix;
+                fix_or_not = this_fix_or_not;
+                this_ans = j;
+            }
+        }
+        //處理產能
+        //如果要修理
+        if(fix_or_not == true)
+        {
+            //加滿到100
+            begin_power[this_ans] = 100 + data[this_ans][1];
+            //扣掉下降的產能
+            begin_power[this_ans] -= (min_hour - begin_period[this_ans] - data[this_ans][2]) * data[this_ans][1];
+            //把修理時間列表填上本次要修理的時間
+            for(int j = begin_period[this_ans];j < begin_period[this_ans] + data[this_ans][2];j++)
+                machine_fix[j] += 1;
+        }
+        //不修理的話，直接扣掉下降產能
+        else
+            begin_power[this_ans] -= (min_hour - begin_period[this_ans]) * data[this_ans][1];
+        //如果低於限制，恢復到極小值
+        if(begin_power[this_ans] < data[this_ans][4])
+            begin_power[this_ans] = data[this_ans][4];
+        
+        //要修理的話，填上“-1”
+        if (fix_or_not == true)
+        {
+            record[this_ans][ans_period[this_ans]] = -1;
+            record[this_ans][ans_period[this_ans] + 1] = orderinfo[i][0];
+            //要加2＝修理＋訂單名稱
+            ans_period[this_ans] += 2;
+        }
+        else
+        {
+            record[this_ans][ans_period[this_ans]] = orderinfo[i][0];
+            ans_period[this_ans] += 1;
+        }
+        begin_period[this_ans] = min_hour;
+    }
+
+}
+//計算所需時間
+int machine_time(int qui, int power, int data[])
+{
+    int time = 0;
+    //乘上100
+    qui = qui * 100;
+    while (qui > 0)
+    {
+        time += 1;
+        power -= data[1];
+        if (power < data[4])
+            power = data[4];
+        qui -= data[0] * power;
+    }
+    return time;
+}
+//輸出
+void output(int m, int* end_time, int** record)
+{
+    for (int i = 0; i < m; i++)
+    {
+        for (int j = 0; j < end_time[i]; j++)
+        {
+            //如果是-1，就是要修理，輸出Ｍ
+            if(record[i][j] == -1)
+                cout << "M,";
+            //如果是最後一個，不要有“,”
+            else if ((record[i][j] != 1)and(j == end_time[i] -1))
+                cout << record[i][j];
+            else
+                cout << record[i][j]<<",";
+        }
+        //沒有安排訂單，輸出"０"
+        if(end_time[i] == 0)
+            cout<<0;
+        cout<<"\n";
+    }
+}
